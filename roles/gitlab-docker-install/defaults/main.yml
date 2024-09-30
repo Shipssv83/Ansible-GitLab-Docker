@@ -1,0 +1,11 @@
+---
+
+path: /opt/gitlab
+path_gitlab:
+  - '{{ path }}/nginx'
+  - '{{ path }}/nginx/certs'
+  - '{{ path }}/gitlab-runner'
+  - '{{ path }}/gitlab'
+  - '{{ path }}/gitlab/backups'
+  - '{{ path }}/backup'
+

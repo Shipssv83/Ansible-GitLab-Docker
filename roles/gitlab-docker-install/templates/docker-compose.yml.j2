@@ -1,0 +1,162 @@
+services:
+
+  gitlab:
+    image: 'gitlab/gitlab-ce:${GITLAB_VERSION}'
+    restart: unless-stopped
+    container_name: gitlab
+    hostname: ${GITLAB_HOSTNAME}
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url '${GITLAB_EXTERNAL_URL}'
+        letsencrypt['enable'] = false
+        nginx['enable'] = true
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        gitlab_rails['gitlab_signups_enabled'] = true
+        gitlab_rails['allowed_signup_domains'] = '{{ fqdn }}'
+        gitlab_rails['time_zone'] = '${TIME}'
+        gitlab_rails['initial_root_password'] = '${GITLAB_ROOT_PASS}'
+        ## ssh
+        gitlab_rails['git_http_enabled'] = false
+        gitlab_rails['gitlab_ssh_host'] = '${GITLAB_HOSTNAME}'
+        gitlab_rails['gitlab_shell_ssh_port'] = '${GITLAB_SSH_PORT}'
+        ## mail smtp
+        gitlab_rails['gitlab_email_enabled'] = true
+        gitlab_rails['gitlab_email_from'] = '${GITLAB_EMAIL_FROM}'
+        gitlab_rails['gitlab_email_display_name'] = 'GitLab'
+        gitlab_rails['gitlab_email_reply_to'] = '${GITLAB_EMAIL_REPLY_TO}'
+        gitlab_rails['smtp_enable'] = true
+        gitlab_rails['smtp_address'] = '${SMTP_ADDRESS}'
+        gitlab_rails['smtp_port'] = ${SMTP_PORT}
+        gitlab_rails['smtp_domain'] = '${SMTP_DOMAIN}'
+        gitlab_rails['smtp_authentication'] = '${SMTP_AUTHENTICATION}'
+        gitlab_rails['smtp_enable_starttls_auto'] = ${SMTP_ENABLE_STARTTLS_AUTO}
+        gitlab_rails['smtp_tls'] = ${SMTP_TLS}
+        gitlab_rails['smtp_openssl_verify_mode'] = '${SMTP_OPENSSL_VERIFY_MODE}'
+        ##
+        postgresql['enable'] = false
+        redis['enable'] = false
+        ## DB
+        gitlab_rails['db_adapter'] = 'postgresql'
+        gitlab_rails['db_encoding'] = 'unicode'
+        gitlab_rails['db_database'] = '${POSTGRES_DB}'
+        gitlab_rails['db_pool'] = 10
+        gitlab_rails['db_username'] = '${POSTGRES_USER}'
+        gitlab_rails['db_password'] = '${POSTGRES_PASSWORD}'
+        gitlab_rails['db_host'] = 'postgres'
+        gitlab_rails['db_port'] = 5432
+        ## redis
+        gitlab_rails['redis_host'] = 'redis'
+        gitlab_rails['redis_port'] = 6379
+        ## backup
+        gitlab_rails['backup_path'] = '/var/opt/gitlab/backups'
+        gitlab_rails['backup_archive_permissions'] = 0644
+        gitlab_rails['backup_keep_time'] = 604800
+    depends_on:
+      - redis
+      - postgres
+    ports:
+      # - '${GITLAB_HTTP_PORT}:80'
+      # - '${GITLAB_HTTPS_PORT}:443'
+      - '${GITLAB_SSH_PORT}:22'
+    volumes:
+      - './gitlab/config:/etc/gitlab'
+      - './gitlab/logs:/var/log/gitlab'
+      - './gitlab/data:/var/opt/gitlab'
+      - './gitlab/backups:/var/opt/gitlab/backups'
+
+  nginx:
+    image: nginx:${NGINX_VERSION}
+    hostname: nginx
+    container_name: nginx
+    restart: unless-stopped
+    depends_on:
+      - gitlab
+    ports:
+      - '${HTTP_PORT}:80'
+      - '${HTTPS_PORT}:443'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    volumes:
+      - './nginx/nginx.conf:/etc/nginx/conf.d/gitlab.conf'
+      - './nginx/certs:/etc/nginx/certs'
+      - './nginx/logs:/var/log/nginx'
+
+  redis:
+    image: redis:${REDIS_VERSION}
+    container_name: redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - './redis:/data'
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB}", "-U", "${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - './postgresql:/var/lib/postgresql/data'
+
+  gitlab-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gitlab-runner
+    restart: unless-stopped
+    volumes:
+      - './gitlab-runner:/etc/gitlab-runner'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    environment:
+      REGISTRATION_TOKEN: '${GITLAB_RUNNER_REGISTRATION_TOKEN}'
+      CI_SERVER_URL: '${GITLAB_URL}'
+      RUNNER_DESCRIPTION: '${GITLAB_RUNNER_DESCRIPTION}'
+      DOCKER_IMAGE: '${GITLAB_RUNNER_DOCKER_IMAGE}'
+      TAG_LIST: '${GITLAB_RUNNER_TAG_LIST}'
+      RUN_UNTAGGED: 'true'
+      LOCKED: 'false'
+      RUNNER_EXTRA_ARGS: "--tls-skip-verify"
+    depends_on:
+      - gitlab
+
+  backup:
+    image: ${BACKUP_IMAGE_TAG}
+    restart: unless-stopped
+    container_name: backup
+    depends_on:
+      - gitlab
+    volumes:
+      - './backup/backup.sh:/backup.sh'
+      - './backup/logs:/var/log/gitlab_backup.log'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - './gitlab/backups:/var/opt/gitlab/backups'
+    entrypoint: |
+      /bin/sh -c '
+        apk add --no-cache docker-cli postgresql-client &&
+        echo "0 0 * * * /backup.sh" | crontab - &&
+        crond -f -d 0
+      '
+    healthcheck:
+      test: ["CMD", "pg_dump", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

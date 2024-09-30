@@ -1,0 +1,25 @@
+---
+  - name: server ufw config
+    become: true
+    hosts: '{{ host }}'
+          
+    tasks:
+
+    - name: 'configure ufw port {{ ssh_port }} ssh gitlab' 
+      community.general.system.ufw:
+        rule: allow
+        port: '{{ ssh_port }}'
+        proto: tcp
+        comment: 'allow port ssh gitlab'
+
+    - name: configure ufw port
+      community.general.system.ufw:
+        rule: allow
+        route: yes
+        port: '{{ item }}'
+        proto: tcp
+        comment: configure ufw port
+      loop: 
+        - '{{ https_port }}'
+        - '{{ ssh_port_gitlab }}'
+        - '{{ http_port }}'

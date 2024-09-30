@@ -1,0 +1,16 @@
+#!/bin/sh
+
+gitlab-runner register --non-interactive \
+  --url "${CI_SERVER_URL}" \
+  --registration-token "${REGISTRATION_TOKEN}" \
+  --executor "docker" \
+  --docker-image "${DOCKER_IMAGE}" \
+  --description "${RUNNER_DESCRIPTION}" \
+  --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
+  --description docker-stable \
+  --tag-list "${TAG_LIST}" \
+  --run-untagged="${RUN_UNTAGGED}" \
+  --locked="${LOCKED}" \
+  --tls-skip-verify
+
+gitlab-runner run

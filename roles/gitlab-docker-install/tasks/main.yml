@@ -1,0 +1,62 @@
+---
+
+- name: create dirs
+  ansible.builtin.file:
+    path: "{{ path }}"
+    state: directory
+    mode: "0755"
+    recurse: true
+
+- name: create path_gitlab
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    recurse: true
+  loop: "{{ path_gitlab }}"
+
+- name: transfer files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: '{{ item.dest }}'
+    mode: '{{ item.mode }}'
+  loop: 
+    - { src: env.j2, dest: '{{ path }}/.env', mode: '644' }
+    - { src: nginx.conf.j2, dest: '{{ path }}/nginx/nginx.conf', mode: '644' }
+    # - { src: certificate.crt.j2, dest: '{{ path }}/nginx/certs/certificate.crt', mode: '644' }
+    # - { src: dhparam.pem.j2, dest: '{{ path }}/nginx/certs/dhparam.pem', mode: '644' }
+    # - { src: private.key.j2, dest: '{{ path }}/nginx/certs/private.key', mode: '644' }
+    - { src: entrypoint.sh.j2, dest: '{{ path }}/entrypoint.sh', mode: '755' }
+    - { src: backup.sh.j2, dest: '{{ path }}/backup/backup.sh', mode: '755' }
+    - { src: Dockerfile.j2, dest: '{{ path }}/Dockerfile', mode: '644' }
+    - { src: config.toml.j2, dest: '{{ path }}/gitlab-runner/config.toml', mode: '644' }
+    - { src: docker-compose.yml.j2, dest: '{{ path }}/docker-compose.yml', mode: '644' }
+    - { src: restore_gitlab.sh.j2, dest: '{{ path }}/backup/restore_gitlab.sh', mode: '755' }
+    - { src: gitlab-runner-register.sh.j2, dest: '{{ path }}/gitlab-runner-register.sh', mode: '755' }
+
+- name: change permissions for entrypoint.sh, backup.sh
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: '0755'
+  loop:
+    - '{{ path }}/entrypoint.sh'
+    - '{{ path }}/backup/backup.sh'
+    - '{{ path }}/backup/restore_gitlab.sh'
+    - '{{ path }}/gitlab-runner-register.sh'
+
+- name: remove first empty line from restore_gitlab.sh
+  ansible.builtin.lineinfile:
+    path: '{{ path }}/backup/restore_gitlab.sh'
+    state: absent
+    regexp: '^$'
+    firstmatch: yes
+
+- name: run docker-compose up
+  ansible.builtin.shell: docker-compose up --build -d
+  args:
+    chdir: '{{ path }}'
+  ignore_errors: true
+  register: output
+
+- ansible.builtin.debug:
+    var: output

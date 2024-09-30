@@ -1,0 +1,9 @@
+FROM gitlab/gitlab-runner:latest
+
+# Копируем скрипт в контейнер
+COPY entrypoint.sh /entrypoint.sh
+
+# Даем права на выполнение скрипта
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

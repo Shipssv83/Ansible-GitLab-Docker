@@ -1,0 +1,48 @@
+{% raw %}
+#!/bin/bash
+
+BACKUP_DIR="/opt/gitlab/gitlab/backups/"
+
+backup_files=($(find "$BACKUP_DIR" -maxdepth 1 -type f -name "*.tar" -printf "%T@ %p\\n" | sort -rn | cut -d ' ' -f 2))
+
+if [ ${#backup_files[@]} -eq 0 ]; then
+    echo "No backup files found in $BACKUP_DIR"
+    exit 1
+fi
+
+echo "Available backup files:"
+for i in "${!backup_files[@]}"; do
+    echo "$((i+1)). ${backup_files[i]##*/}"
+done
+
+read -p "Enter the number of the backup file you want to restore: " choice
+
+if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#backup_files[@]} ]; then
+    echo "Invalid choice. Please enter a number between 1 and ${#backup_files[@]}"
+    exit 1
+fi
+
+selected_backup="${backup_files[choice-1]}"
+
+echo "You selected: $selected_backup"
+
+echo "Stopping Puma..."
+docker exec -it gitlab gitlab-ctl stop puma
+
+echo "Stopping Sidekiq..."
+docker exec -it gitlab gitlab-ctl stop sidekiq
+
+echo "Verifying GitLab status..."
+docker exec -it gitlab gitlab-ctl status
+
+echo "Restoring GitLab from backup..."
+docker exec -it gitlab gitlab-backup restore "$selected_backup"
+
+echo "Restarting GitLab container..."
+docker restart gitlab
+
+echo "Checking GitLab integrity..."
+docker exec -it gitlab gitlab-rake gitlab:check SANITIZE=true
+
+echo "GitLab restore completed successfully!"
+{% endraw %}

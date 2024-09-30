@@ -1,0 +1,36 @@
+---
+- name: include server install play
+  ansible.builtin.import_playbook: server-install.yml
+
+- name: include docker install play
+  ansible.builtin.import_playbook: docker-install.yml
+
+- name: gitlab docker install
+  become: true
+  hosts: '{{ host }}'
+  vars:
+    timezone: 'Europe/Warsaw'
+    fqdn: 'example.com'
+    gitlab_ssh_host_name: 'ssh.example.com'
+    gitlab_root_password: 'yourpassword'
+    ssh_port_gitlab: '22'
+    http_port: '80'
+    https_port: '443'
+    ssh_port: '2222'
+    gitlab_docker_version: '17.4.1-ce.0'
+    git_pos_user: 'username'
+    git_pos_pass: 'yourpassword'
+    git_pos_db: 'gitlab'
+    smtp: '....'
+    smtp_port: '....'
+    smtp_domain: '....'
+    registrattion_token: '....'
+
+  roles:
+    - roles/gitlab-docker-install
+
+  tasks:
+
+- name: include firewall config play
+  ansible.builtin.import_playbook: ufw_firewall/firewall-gitlab.yml
+  when: ansible_facts['os_family'] == "Debian" and ansible_facts['distribution'] == "Ubuntu"

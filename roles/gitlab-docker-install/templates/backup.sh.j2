@@ -1,0 +1,8 @@
+#!/bin/sh
+export PATH=$PATH:/usr/local/bin
+
+if docker exec -t gitlab gitlab-backup create; then
+  echo "Backup successful" > /var/log/gitlab_backup.log
+else
+  echo "Backup failed" > /var/log/gitlab_backup.log
+fi
